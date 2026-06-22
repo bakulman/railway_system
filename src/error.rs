@@ -4,12 +4,12 @@ pub enum SystemError {
     DatabaseError(String),
     ConfigError(String),
 
-    DuplicateTrain { tarin_id: TrainId },
+    DuplicateTrain { train_id: TrainId },
     DuplicateClerk { clerk_id: ClerkId },
     TrainNotFound { train_id: TrainId },
     ClerkNotFound { clerk_id: ClerkId },
     SeatInsufficient { train_id: TrainId },
-    InvalidRound { reason: String },
+    InvalidRoute { reason: String },
     InvalidPrice,
 }
 

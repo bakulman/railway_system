@@ -1,3 +1,4 @@
+
 -- 1. 创建业务员表
 CREATE TABLE clerks (
     clerk_id INT PRIMARY KEY,

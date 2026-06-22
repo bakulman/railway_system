@@ -2,7 +2,7 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 // 提示：你需要根据实际情况在 error.rs 中定义你的 SystemError 枚举
 use crate::{
     error::{Result, SystemError},
-    modules::TrainId,
+    modules::{ClerkId, TrainId},
 };
 
 pub struct DbStorage {
@@ -30,7 +30,7 @@ impl DbStorage {
         // SQL 提示: INSERT INTO trains (train_id, name, total_seats, remaining_seats) VALUES ($1, $2, $3, $4)
         // 注意：PostgreSQL 的占位符是 $1, $2, $3 ...
         let query_future = sqlx::query("insert into trains (train_id, name, total_seats, remaining_seats) values($1, $2, $3, $4);")
-            .bind(id)
+            .bind(id.0)
             .bind(name)
             .bind(total_seats)
             .bind(total_seats);
@@ -40,7 +40,7 @@ impl DbStorage {
             Err(sqlx_err) => {
                 if let sqlx::Error::Database(db_err) = &sqlx_err {
                     if db_err.code().as_deref() == Some("23505") {
-                        return Err(SystemError::DuplicateTrain { tarin_id: id });
+                        return Err(SystemError::DuplicateTrain { train_id: id });
                     }
                 }
                 Err(SystemError::DatabaseError(sqlx_err.to_string()))
@@ -52,7 +52,7 @@ impl DbStorage {
     /// 边界条件：price_cents 必须大于 0；to_seq 必须大于 from_seq，否则返回 SystemError::InvalidRoute
     pub async fn set_price(
         &self,
-        train_id: i32,
+        train_id: TrainId,
         from_station: i32,
         to_station: i32,
         price_cents: i32,
@@ -65,17 +65,41 @@ impl DbStorage {
         }
 
         if to_seq <= from_seq {
-            return Err(SystemError::InvalidRound {
+            return Err(SystemError::InvalidRoute {
                 reason: format!("终点{} 不能小于起点{}", to_seq, from_seq),
             });
         }
-        let query = sqlx::query()
-        Ok(())
+        let query_feature = sqlx::query("insert into train_prices(train_id, from_station_id, to_station_id, price_cents, from_seq, to_seq) values($1,$2,$3,$4,$5,$6);")
+            .bind(train_id.0)
+            .bind(from_station)
+            .bind(to_station)
+            .bind(price_cents)
+            .bind(from_seq)
+            .bind(to_seq);
+        match query_feature.execute(&self.pool).await {
+            Ok(_) => return Ok(()),
+            Err(sqlx_err) => return Err(SystemError::DatabaseError(sqlx_err.to_string())),
+        }
     }
 
     /// 往数据库注册一个业务员
-    pub async fn add_clerk(&self, id: i32, name: &str) -> Result<(), SystemError> {
+    pub async fn add_clerk(&self, id: ClerkId, name: &str) -> Result<()> {
         // SQL 提示: INSERT INTO clerks ...
-        todo!()
+        let query_feature =
+            sqlx::query("insert into clerks(clerk_id, name, is_active) values($1,$2,$3);")
+                .bind(id.0)
+                .bind(name)
+                .bind(false);
+        match query_feature.execute(&self.pool).await {
+            Ok(_) => return Ok(()),
+            Err(sqlx_err) => {
+                if let sqlx::Error::Database(db_err) = &sqlx_err {
+                    if db_err.code().as_deref() == Some("23505") {
+                        return Err(SystemError::DuplicateClerk { clerk_id: id });
+                    }
+                }
+                return Err(SystemError::DatabaseError(sqlx_err.to_string()));
+            }
+        }
     }
 }
