@@ -1,8 +1,8 @@
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{PgPool, PgTransaction, Postgres, Transaction, postgres::PgPoolOptions};
 // 提示：你需要根据实际情况在 error.rs 中定义你的 SystemError 枚举
 use crate::{
     error::{Result, SystemError},
-    modules::{ClerkId, TrainId},
+    modules::{ClerkId, StationId, TrainId},
 };
 
 pub struct DbStorage {
@@ -91,12 +91,55 @@ impl DbStorage {
                 .bind(name)
                 .bind(false);
         match query_feature.execute(&self.pool).await {
-            Ok(_) => return Ok(()),
+            Ok(_) => Ok(()),
             Err(sqlx_err) => {
-                if let sqlx::Error::Database(db_err) = &sqlx_err {
-                    if db_err.code().as_deref() == Some("23505") {
-                        return Err(SystemError::DuplicateClerk { clerk_id: id });
-                    }
+                if let sqlx::Error::Database(db_err) = &sqlx_err
+                    && db_err.code().as_deref() == Some("23505")
+                {
+                    return Err(SystemError::DuplicateClerk { clerk_id: id });
+                }
+                return Err(SystemError::DatabaseError(sqlx_err.to_string()));
+            }
+        }
+    }
+
+    pub async fn sell_ticket(
+        &self,
+        clerk_id: ClerkId,
+        train_id: TrainId,
+        from_station: StationId,
+        to_station: StationId,
+        seat_number: i32,
+        price_cents: i32,
+    ) -> Result<()> {
+        let mut tx: PgTransaction<'_> = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+
+        let sold_at_timestamp = 1719000000;
+        let query_future = sqlx::query("insert into tickets (train_id, clerk_id, from_station_id, to_station_id, seat_number, price_cents, sold_at) values($1, $2, $3, $4, $5, $6, $7);")
+            .bind(train_id.0)
+            .bind(clerk_id.0)
+            .bind(from_station.0)
+            .bind(to_station.0)
+            .bind(seat_number)
+            .bind(price_cents)
+            .bind(sold_at_timestamp);
+
+        match query_future.execute(&mut *tx).await {
+            Ok(_) => {
+                tx.commit()
+                    .await
+                    .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+                return Ok(());
+            }
+            Err(sqlx_err) => {
+                if let sqlx::Error::Database(db_err) = &sqlx_err
+                    && db_err.code().as_deref() == Some("P0001")
+                {
+                    return Err(SystemError::SeatInsufficient { train_id });
                 }
                 return Err(SystemError::DatabaseError(sqlx_err.to_string()));
             }
