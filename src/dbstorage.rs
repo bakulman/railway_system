@@ -146,3 +146,100 @@ impl DbStorage {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::{ClerkId, StationId, TrainId};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    #[tokio::test]
+    async fn test_high_concurrency_sell_ticket() {
+        // 1. 初始化连接池（请确保你的 Docker PostgreSQL 正在运行）
+        let url = "postgres://postgres_admin:PasswordBase123!@127.0.0.1:5433/railway_db";
+        let storage = DbStorage::connect(url).await.expect("数据库连接失败");
+
+        // 用 Arc 把 storage 包起来，方便在 100 个并发线程之间安全地共享只读引用
+        let storage = Arc::new(storage);
+
+        // 2. 清理历史测试数据（防止上一次测试的数据干扰）
+        // 这里可以直接执行硬编码的删除，保证测试环境纯净
+        let _ = sqlx::query("DELETE FROM tickets WHERE train_id = 888;")
+            .execute(&storage.pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM trains WHERE train_id = 888;")
+            .execute(&storage.pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM clerks WHERE clerk_id = 888;")
+            .execute(&storage.pool)
+            .await;
+
+        // 3. 初始化测试资产：注册一个只有 3 张票的 G888 车次
+        storage.add_clerk(ClerkId(888), "并发测试员").await.unwrap();
+        storage.add_train(TrainId(888), "G888", 3).await.unwrap();
+
+        // 4. 准备两个线程安全的“高频计数器”（Atomic 原子类型），用来记录战况
+        let success_count = Arc::new(AtomicU32::new(0));
+        let seat_err_count = Arc::new(AtomicU32::new(0));
+
+        // 记录所有并发任务的句柄，用于最后等待它们全部结束
+        let mut join_handles = vec![];
+
+        println!("🔥 警告：100 个买票请求开始全速冲锋...");
+
+        // 5. 疯狂并发：并发拉起 100 个独立的状态机任务
+        for i in 0..100 {
+            let storage_clone = Arc::clone(&storage);
+            let success_clone = Arc::clone(&success_count);
+            let err_clone = Arc::clone(&seat_err_count);
+
+            let handle = tokio::spawn(async move {
+                // 所有人都在抢 888 车次，座位号统一传 i
+                match storage_clone
+                    .sell_ticket(
+                        ClerkId(888),
+                        TrainId(888),
+                        StationId(1),
+                        StationId(2),
+                        i, // 座位号
+                        5000,
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        // 抢票成功，原子计数器 + 1
+                        success_clone.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Err(SystemError::SeatInsufficient { .. }) => {
+                        // 精准捕获到了触发器抛出的余票不足错误，原子计数器 + 1
+                        err_clone.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Err(other) => {
+                        panic!("出现了未预期的其他数据库故障: {:?}", other);
+                    }
+                }
+            });
+            join_handles.push(handle);
+        }
+
+        // 6. 等待这 100 个冲锋的任务全部打完收工
+        for handle in join_handles {
+            let _ = handle.await;
+        }
+
+        // 7. 打印最终战果
+        let final_success = success_count.load(Ordering::SeqCst);
+        let final_err = seat_err_count.load(Ordering::SeqCst);
+        println!(
+            "📊 战果结算 -> 成功出票: {} 张, 拦截超卖: {} 次",
+            final_success, final_err
+        );
+
+        // 8. 工业级终极断言：检查数据是否绝对一致
+        assert_eq!(final_success, 3, "发生了超卖！成功票数竟然不等于 3");
+        assert_eq!(final_err, 97, "拦截次数不符合预期");
+
+        println!("🎉 测试通过！并发大闸坚不可摧！");
+    }
+}

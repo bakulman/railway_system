@@ -1,5 +1,6 @@
 use crate::modules::{ClerkId, TrainId};
 
+#[derive(Debug)]
 pub enum SystemError {
     DatabaseError(String),
     ConfigError(String),
