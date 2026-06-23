@@ -112,11 +112,20 @@ impl DbStorage {
         seat_number: i32,
         price_cents: i32,
     ) -> Result<()> {
+        //开启事务
         let mut tx: PgTransaction<'_> = self
             .pool
             .begin()
             .await
             .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+
+        //注入悲观锁
+
+        sqlx::query("select 1 from trains where train_id = $1 for update;")
+            .bind(train_id.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| SystemError::DatabaseError(format!("高并发获取锁失败: {}", e)))?;
 
         let sold_at_timestamp = 1719000000;
         let query_future = sqlx::query("insert into tickets (train_id, clerk_id, from_station_id, to_station_id, seat_number, price_cents, sold_at) values($1, $2, $3, $4, $5, $6, $7);")
