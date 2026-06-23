@@ -20,7 +20,7 @@ CREATE TABLE train_prices (
     from_station_id INT NOT NULL,
     to_station_id INT NOT NULL,
     price_cents INT NOT NULL,
-    from_seq INT NOT NULL,
+    from_seq INT NOT NULL,  --车次的站点序列
     to_seq INT NOT NULL,
     PRIMARY KEY (train_id, from_station_id, to_station_id),
     FOREIGN KEY (train_id) REFERENCES trains(train_id) ON DELETE CASCADE
@@ -38,4 +38,10 @@ CREATE TABLE tickets (
     sold_at BIGINT NOT NULL,
     FOREIGN KEY (train_id) REFERENCES trains(train_id),
     FOREIGN KEY (clerk_id) REFERENCES clerks(clerk_id)
+);
+
+-- TODO!!!!!
+create table station(
+    station_id int primary key,
+    station_name varchar(50) not null
 );
