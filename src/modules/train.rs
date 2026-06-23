@@ -6,6 +6,4 @@ pub struct Train {
     pub name: String,
     pub total_seats: u32,
     pub remaining_seats: u32,
-    pub station: Vec<StationId>,
-    pub station_price: HashMap<(StationId, StationId), u32>,
 }

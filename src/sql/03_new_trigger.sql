@@ -1,5 +1,5 @@
 -- 1. 废除旧的计件触发器
-DROP TRIGGER IF EXISTS trig_ticket_sold ON tickets;
+DROP TRIGGER IF EXISTS  trig_ticket_segment_check ON tickets;
 
 -- 2. 创造全新的区间冲突判定函数
 CREATE OR REPLACE FUNCTION fn_check_segment_conflict()
@@ -37,7 +37,7 @@ BEGIN
         RAISE EXCEPTION '座位 % 在该区间已被锁定，无法购买', NEW.seat_number
         USING ERRCODE = 'P0003';
     END IF;
-
+-- PERFORM pg_sleep(1);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

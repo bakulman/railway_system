@@ -1,4 +1,4 @@
-use sqlx::{PgPool, PgTransaction, Postgres, Transaction, postgres::PgPoolOptions};
+use sqlx::{PgPool, PgTransaction, Postgres, Transaction, postgres::PgPoolOptions, query};
 // 提示：你需要根据实际情况在 error.rs 中定义你的 SystemError 枚举
 use crate::{
     error::{Result, SystemError},
@@ -15,7 +15,7 @@ impl DbStorage {
     pub async fn connect(database_url: &str) -> Result<Self> {
         // 提示：使用 sqlx::PgPool::connect(database_url).await 来建立连接池
         let pool = PgPoolOptions::new()
-            .max_connections(5)
+            .max_connections(10)
             .connect(database_url)
             .await
             .map_err(|sqlx_err| {
@@ -136,10 +136,20 @@ impl DbStorage {
                 return Ok(());
             }
             Err(sqlx_err) => {
-                if let sqlx::Error::Database(db_err) = &sqlx_err
-                    && db_err.code().as_deref() == Some("P0001")
-                {
-                    return Err(SystemError::SeatInsufficient { train_id });
+                if let sqlx::Error::Database(db_err) = &sqlx_err {
+                    match db_err.code().as_deref() {
+                        Some("P0002") => {
+                            return Err(SystemError::InvalidRoute {
+                                reason: format!("from station or to station NOT FOUND"),
+                            });
+                        }
+                        Some("P0003") => {
+                            return Err(SystemError::SeatConfig {
+                                seat_id: seat_number as u32,
+                            });
+                        }
+                        e => {}
+                    }
                 }
                 return Err(SystemError::DatabaseError(sqlx_err.to_string()));
             }
@@ -157,15 +167,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_high_concurrency_sell_ticket() {
-        // 1. 初始化连接池（请确保你的 Docker PostgreSQL 正在运行）
+        // 1. 初始化连接池
         let url = "postgres://postgres_admin:PasswordBase123!@127.0.0.1:5433/railway_db";
         let storage = DbStorage::connect(url).await.expect("connect failed!");
 
-        let storage = Arc::new(storage);
+        // 环境大扫除（注意：也要顺便清理价格表）
+        let _ = sqlx::query("DELETE FROM tickets WHERE train_id = 1;")
+            .execute(&storage.pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM train_prices WHERE train_id = 1;")
+            .execute(&storage.pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM trains WHERE train_id = 1;")
+            .execute(&storage.pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM clerks WHERE clerk_id = 1;")
+            .execute(&storage.pool)
+            .await;
 
+        let storage = Arc::new(storage);
         let success_cnt = Arc::new(AtomicU32::new(0));
         let fail_cnt = Arc::new(AtomicU32::new(0));
 
+        // 2. 注册员工与车次
         storage
             .add_clerk(ClerkId(1), "888")
             .await
@@ -175,16 +199,23 @@ mod tests {
             .await
             .expect("fail to add train");
 
+        // 3. 🟢 绝杀修复 1：在买票前，必须配置好这趟车的区间顺序（从 1 站到 2 站，物理顺序为 1 和 2）
+        storage
+            .set_price(TrainId(1), 1, 2, 5000, 1, 2)
+            .await
+            .expect("fail to set price configuration");
+
         let mut join_handles = vec![];
 
-        for i in 0..100 {
+        for _i in 0..100 {
             let storage = Arc::clone(&storage);
             let scnt = Arc::clone(&success_cnt);
             let fcnt = Arc::clone(&fail_cnt);
 
             let handle = tokio::spawn(async move {
+                // 4. 🟢 绝杀修复 2：把原本的 `i` 改成固定的 `7`！让 100 个人同时去抢 7 号座位！
                 match storage
-                    .sell_ticket(ClerkId(1), TrainId(1), StationId(1), StationId(2), i, 23)
+                    .sell_ticket(ClerkId(1), TrainId(1), StationId(1), StationId(2), 7, 5000)
                     .await
                 {
                     Ok(_) => scnt.fetch_add(1, Ordering::Relaxed),
@@ -202,5 +233,12 @@ mod tests {
         let final_err = fail_cnt.load(Ordering::SeqCst);
 
         println!("final success: {final_success}\n final fail: {final_err}");
+
+        // 5. 工业级自动化把关断言
+        assert_eq!(
+            final_success, 1,
+            "同一区间段的同一个座位，应该只能有 1 个人买成功！"
+        );
+        assert_eq!(final_err, 99, "应该有 99 个人因为区间重叠冲突被硬核拦截！");
     }
 }
