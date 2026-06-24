@@ -199,6 +199,33 @@ impl DbStorage {
             .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
         Ok(())
     }
+
+    /// 调用存储过程 1：统计指定车次在指定时间的销售张数
+    pub async fn get_train_sales_stats(&self, train_id: TrainId, timestamp: i32) -> Result<i32> {
+        let row: (i32,) = sqlx::query_as("SELECT proc_count_train_sales($1, $2);")
+            .bind(train_id.0)
+            .bind(timestamp)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+
+        Ok(row.0)
+    }
+
+    /// 调用存储过程 2：统计指定日期（时间戳起始点）各业务员的销售收入
+    pub async fn get_clerk_revenue_stats(
+        &self,
+        day_start_timestamp: i32,
+    ) -> Result<Vec<(i32, i32)>> {
+        // sqlx 的 query_as 可以直接把存储过程返回的 TABLE 映射为元组的集合
+        let rows: Vec<(i32, i32)> = sqlx::query_as("SELECT * FROM proc_clerk_daily_revenue($1);")
+            .bind(day_start_timestamp)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+
+        Ok(rows)
+    }
 }
 
 #[cfg(test)]

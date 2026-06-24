@@ -135,10 +135,13 @@ async fn main() {
         .expect("数据库连接失败, 请检查 docker 状态");
 
     let shared_storage = Arc::new(storage);
+
+    // 网页是以本地文件（或者另一个端口）打开的，而 Axum 跑在 8080，现代浏览器的安全策略（同源策略）会无情地拦截这种跨端口的抓取请求。
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
+
     let app = Router::new()
         .route("/api/v1/clerks", post(handle_add_clerk))
         .route("/api/v1/trains", post(handle_add_train))
@@ -146,7 +149,7 @@ async fn main() {
         .route("/api/v1/tickets/sell", post(handle_sell_ticket))
         // 🟢 极其优雅：通过 with_state 一把将数据底座焊死在整个 Web 路由生命周期中
         .with_state(shared_storage)
-        .layer(cors);
+        .layer(cors); //cors
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
         .await
