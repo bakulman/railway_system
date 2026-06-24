@@ -166,6 +166,39 @@ impl DbStorage {
             }
         }
     }
+
+    /// 退票业务
+    async fn refund_ticket(&self, train_id: TrainId, seat_number: i32) -> Result<()> {
+        // 开启事务
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+
+        //执行删除
+        let result = sqlx::query("delete from tickets where train_id = $1 and seat_number = $2")
+            .bind(train_id.0)
+            .bind(seat_number)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+
+        // 业务防御, 如果删除影响的行数是 0, 说明这张票不存在
+        if result.rows_affected() == 0 {
+            return Err(SystemError::InvalidRoute {
+                reason: format!(
+                    "退票失败: 未找到车次 {} 座位 {} 的购票流水",
+                    train_id.0, seat_number
+                ),
+            });
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

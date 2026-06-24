@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>⚡ 极速铁路全栈并发售票演兵场</title>
+        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    </head>
+    <body class="bg-gray-900 text-gray-100 font-sans min-h-screen p-8">
+        <div class="max-w-4xl mx-auto">
+            <header class="border-b border-gray-800 pb-4 mb-8">
+                <h1
+                    class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-400"
+                >
+                    RAILWAY ADMIRAL
+                    <span
+                        class="text-xs font-mono px-2 py-1 bg-gray-800 text-gray-400 rounded"
+                        >Milestone 4 完全体</span
+                    >
+                </h1>
+                <p class="text-sm text-gray-400 mt-1">
+                    基于 Rust Axum + Postgres 悲观锁防超卖沙盘
+                </p>
+            </header>
+
+            <section
+                class="bg-gray-800 rounded-xl p-6 mb-6 border border-gray-700 shadow-xl"
+            >
+                <h2
+                    class="text-lg font-bold text-cyan-400 mb-4 flex items-center"
+                >
+                    <span class="bg-cyan-500/10 p-1.5 rounded mr-2">01</span>
+                    初始化系统基础数据
+                </h2>
+                <p class="text-xs text-gray-400 mb-4">
+                    一键在数据库中插入测试数据：车次 G777（总座位 2）、区间
+                    1站→2站、智能业务员 777。
+                </p>
+                <button
+                    onclick="initializeSystem()"
+                    class="bg-cyan-600 hover:bg-cyan-500 font-medium px-4 py-2 rounded-lg transition text-sm cursor-pointer shadow-md shadow-cyan-900/30"
+                >
+                    ⚡ 注入初始化测试配置
+                </button>
+            </section>
+
+            <section
+                class="bg-gray-800 rounded-xl p-6 mb-6 border border-gray-700 shadow-xl"
+            >
+                <h2
+                    class="text-lg font-bold text-emerald-400 mb-4 flex items-center"
+                >
+                    <span class="bg-emerald-500/10 p-1.5 rounded mr-2">02</span>
+                    火车票抢购沙盘（死磕 5 号座位）
+                </h2>
+
+                <div class="flex gap-4 mb-6">
+                    <button
+                        onclick="buySingleTicket()"
+                        class="bg-emerald-600 hover:bg-emerald-500 font-medium px-4 py-2 rounded-lg transition text-sm cursor-pointer shadow-md shadow-emerald-900/30"
+                    >
+                        🧑 正常单人购票 (5号座)
+                    </button>
+
+                    <button
+                        onclick="blitzConcurrency()"
+                        class="bg-rose-600 hover:bg-rose-500 font-bold px-5 py-2 rounded-lg transition text-sm cursor-pointer shadow-md shadow-rose-950/40 animate-pulse"
+                    >
+                        🔥 100个请求并发全速冲锋！
+                    </button>
+                </div>
+
+                <div
+                    class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-950 p-4 rounded-lg border border-gray-800 font-mono"
+                >
+                    <div>
+                        <div class="text-xs text-gray-500">发送总请求</div>
+                        <div
+                            id="stat-total"
+                            class="text-xl font-bold text-gray-300"
+                        >
+                            0
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-emerald-500">
+                            成功出票数 (200/201)
+                        </div>
+                        <div
+                            id="stat-success"
+                            class="text-xl font-bold text-emerald-400"
+                        >
+                            0
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-rose-500">
+                            触发器精准拦截 (409)
+                        </div>
+                        <div
+                            id="stat-conflict"
+                            class="text-xl font-bold text-rose-400"
+                        >
+                            0
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-amber-500">
+                            系统其他未知错误
+                        </div>
+                        <div
+                            id="stat-error"
+                            class="text-xl font-bold text-amber-400"
+                        >
+                            0
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section
+                class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-xl"
+            >
+                <div class="flex justify-between items-center mb-4">
+                    <h2
+                        class="text-lg font-bold text-amber-400 flex items-center"
+                    >
+                        <span class="bg-amber-500/10 p-1.5 rounded mr-2"
+                            >03</span
+                        >
+                        网关实时响应流水日志
+                    </h2>
+                    <button
+                        onclick="
+                            document.getElementById('console-log').innerHTML =
+                                ''
+                        "
+                        class="text-xs text-gray-500 hover:text-gray-300 underline cursor-pointer"
+                    >
+                        清空控制台
+                    </button>
+                </div>
+                <div
+                    id="console-log"
+                    class="bg-gray-950 rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs space-y-2 border border-gray-800 leading-relaxed"
+                >
+                    <div class="text-gray-600">
+                        [系统就绪] 等待指挥官下达指令...
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <script>
+            const API_BASE = "http://127.0.0.1:8080/api/v1";
+
+            // 辅助函数：往控制台打印漂亮带颜色的日志
+            function log(msg, type = "info") {
+                const container = document.getElementById("console-log");
+                const time = new Date().toLocaleTimeString();
+                let color = "text-gray-400";
+                if (type === "success") color = "text-emerald-400 font-bold";
+                if (type === "conflict") color = "text-rose-400 font-medium";
+                if (type === "error") color = "text-amber-500 font-bold";
+
+                container.innerHTML += `<div class="${color}">[${time}] ${msg}</div>`;
+                container.scrollTop = container.scrollHeight; // 滚动条自动滚到底
+            }
+
+            // 1. 初始化系统数据逻辑
+            // 升级版：严格校验后端的初始化逻辑
+            async function initializeSystem() {
+                try {
+                    let r1 = await fetch(`${API_BASE}/trains`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            train_id: 777,
+                            name: "复兴号G777",
+                            total_seats: 2,
+                        }),
+                    });
+
+                    let r2 = await fetch(`${API_BASE}/prices`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            train_id: 777,
+                            from_station: 1,
+                            to_station: 2,
+                            price_cents: 5000,
+                            from_seq: 1,
+                            to_seq: 2,
+                        }),
+                    });
+
+                    let r3 = await fetch(`${API_BASE}/clerks`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            clerk_id: 777,
+                            name: "智能售票机",
+                        }),
+                    });
+
+                    // 🟢 核心修复：检查每一个请求的 response.ok (状态码在 200-299 之间)
+                    if (!r1.ok || !r2.ok || !r3.ok) {
+                        log(
+                            "⚠️ 系统检测到数据库已存在测试车次 777。若想重新初始化，请先去数据库清空 tickets 表！",
+                            "error",
+                        );
+                        return;
+                    }
+
+                    log(
+                        "🟢 基础数据筑基成功！车次777, 区间1-2站, 业务员777已全新落盘。",
+                        "success",
+                    );
+                } catch (err) {
+                    log(`❌ 筑基初始化遭遇网络崩溃: ${err.message}`, "error");
+                }
+            }
+
+            // 2. 核心：封装单次购票的 Fetch 网络请求
+            async function sendOneSellRequest() {
+                const response = await fetch(`${API_BASE}/tickets/sell`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        clerk_id: 777,
+                        train_id: 777,
+                        from_station_id: 1,
+                        to_station_id: 2,
+                        seat_number: 5, // 所有人全部围剿锁死 5 号座位
+                        price_cents: 5000,
+                    }),
+                });
+
+                const data = await response.json();
+                return { status: response.status, data };
+            }
+
+            // 手动单人买票
+            async function buySingleTicket() {
+                try {
+                    const { status, data } = await sendOneSellRequest();
+                    if (status === 200 || status === 201) {
+                        log(
+                            `🎉 恭喜！单人出票成功！状态码: ${status} | 详情: ${data.message}`,
+                            "success",
+                        );
+                    } else if (status === 409) {
+                        log(
+                            `💥 触发器防御生效！状态码: 409 | 原因: ${data.message}`,
+                            "conflict",
+                        );
+                    } else {
+                        log(
+                            `⚠️ 收到非预期响应: ${status} | ${data.message}`,
+                            "error",
+                        );
+                    }
+                } catch (err) {
+                    log(`🚨 网络管道抛出异常: ${err.message}`, "error");
+                }
+            }
+
+            // 3. 💥 核心爽点：使用 Promise.all 在浏览器端发动 100 连发高并发突击
+            async function blitzConcurrency() {
+                log(
+                    "🔥 警报：100 个买票小人已经集结完毕，全速向 Postgres 悲观锁阵地冲锋！",
+                );
+
+                // 重置计数面板
+                let total = 0,
+                    success = 0,
+                    conflict = 0,
+                    error = 0;
+                const updateStats = () => {
+                    document.getElementById("stat-total").innerText = total;
+                    document.getElementById("stat-success").innerText = success;
+                    document.getElementById("stat-conflict").innerText =
+                        conflict;
+                    document.getElementById("stat-error").innerText = error;
+                };
+
+                // 创建 100 个并行的 Fetch 异步状态机数组
+                let tasks = [];
+                for (let i = 0; i < 100; i++) {
+                    tasks.push(
+                        sendOneSellRequest()
+                            .then(({ status, data }) => {
+                                total++;
+                                if (status === 200 || status === 201) {
+                                    success++;
+                                    log(
+                                        `[HTTP ${status}] 🎟️ 第 ${i + 1} 号抢票成功！座位号: ${data.data.seat_number}`,
+                                        "success",
+                                    );
+                                } else if (status === 409) {
+                                    conflict++;
+                                    log(
+                                        `[HTTP 409] 🛡️ 第 ${i + 1} 号被硬核拦截 -> ${data.message}`,
+                                        "conflict",
+                                    );
+                                } else {
+                                    error++;
+                                }
+                                updateStats();
+                            })
+                            .catch((err) => {
+                                total++;
+                                error++;
+                                log(
+                                    `[PIPE ERR] 异步管道断裂: ${err.message}`,
+                                    "error",
+                                );
+                                updateStats();
+                            }),
+                    );
+                }
+
+                // 扔进多线程异步并发池，等待全员打道回府
+                await Promise.all(tasks);
+                log(
+                    `📊 战役大获全胜！最终结算 -> 成功出票: ${success} 张，精准锁死超卖: ${conflict} 次。`,
+                    "success",
+                );
+            }
+        </script>
+    </body>
+</html>
