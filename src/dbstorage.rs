@@ -153,11 +153,13 @@ impl DbStorage {
                             });
                         }
                         Some("P0003") => {
-                            return Err(SystemError::SeatConfig {
+                            return Err(SystemError::SeatConflict {
                                 seat_id: seat_number as u32,
                             });
                         }
-                        e => {}
+                        e => {
+                            todo!()
+                        }
                     }
                 }
                 return Err(SystemError::DatabaseError(sqlx_err.to_string()));
