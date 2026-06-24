@@ -104,134 +104,104 @@ impl DbStorage {
     }
 
     pub async fn sell_ticket(
-        &self,
-        clerk_id: ClerkId,
-        train_id: TrainId,
-        from_station: StationId,
-        to_station: StationId,
-        seat_number: i32,
-        price_cents: i32,
-    ) -> Result<()> {
-        //开启事务
-        let mut tx: PgTransaction<'_> = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+            &self,
+            clerk_id: ClerkId,
+            train_id: TrainId,
+            from_station: StationId,
+            to_station: StationId,
+            seat_number: i32,
+            price_cents: i32,
+        ) -> Result<()> {
+            // 开启事务
+            let mut tx: PgTransaction<'_> = self
+                .pool
+                .begin()
+                .await
+                .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
 
-        //注入悲观锁
+            // 注入悲观锁
+            sqlx::query("select 1 from trains where train_id = $1 for update;")
+                .bind(train_id.0)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| SystemError::DatabaseError(format!("高并发获取锁失败: {}", e)))?;
 
-        sqlx::query("select 1 from trains where train_id = $1 for update;")
-            .bind(train_id.0)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| SystemError::DatabaseError(format!("高并发获取锁失败: {}", e)))?;
+            // 🟢 修复：将 i64 修改为 i32，与数据库 INT 和统计过程完美对齐
+            let sold_at_timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_secs() as i32)
+                .unwrap_or(0);
 
-        // let sold_at_timestamp = 1719000000;
-        let sold_at_timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_secs() as i64)
-            .unwrap_or(0);
+            let query_future = sqlx::query("insert into tickets (train_id, clerk_id, from_station_id, to_station_id, seat_number, price_cents, sold_at) values($1, $2, $3, $4, $5, $6, $7);")
+                .bind(train_id.0)
+                .bind(clerk_id.0)
+                .bind(from_station.0)
+                .bind(to_station.0)
+                .bind(seat_number)
+                .bind(price_cents)
+                .bind(sold_at_timestamp);
 
-        let query_future = sqlx::query("insert into tickets (train_id, clerk_id, from_station_id, to_station_id, seat_number, price_cents, sold_at) values($1, $2, $3, $4, $5, $6, $7);")
-            .bind(train_id.0)
-            .bind(clerk_id.0)
-            .bind(from_station.0)
-            .bind(to_station.0)
-            .bind(seat_number)
-            .bind(price_cents)
-            .bind(sold_at_timestamp);
-
-        match query_future.execute(&mut *tx).await {
-            Ok(_) => {
-                tx.commit()
-                    .await
-                    .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
-                return Ok(());
-            }
-            Err(sqlx_err) => {
-                if let sqlx::Error::Database(db_err) = &sqlx_err {
-                    match db_err.code().as_deref() {
-                        Some("P0002") => {
-                            return Err(SystemError::InvalidRoute {
-                                reason: format!("from station or to station NOT FOUND"),
-                            });
-                        }
-                        Some("P0003") => {
-                            return Err(SystemError::SeatConflict {
-                                seat_id: seat_number as u32,
-                            });
-                        }
-                        e => {
-                            // todo!()
+            match query_future.execute(&mut *tx).await {
+                Ok(_) => {
+                    tx.commit()
+                        .await
+                        .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+                    return Ok(());
+                }
+                Err(sqlx_err) => {
+                    if let sqlx::Error::Database(db_err) = &sqlx_err {
+                        match db_err.code().as_deref() {
+                            Some("P0002") => {
+                                return Err(SystemError::InvalidRoute {
+                                    reason: format!("from station or to station NOT FOUND"),
+                                });
+                            }
+                            Some("P0003") => {
+                                return Err(SystemError::SeatConflict {
+                                    seat_id: seat_number as u32,
+                                });
+                            }
+                            _ => {} // 🟢 清理掉空的 todo!()，保持代码干净
                         }
                     }
+                    return Err(SystemError::DatabaseError(sqlx_err.to_string()));
                 }
-                return Err(SystemError::DatabaseError(sqlx_err.to_string()));
             }
         }
-    }
 
-    /// 退票业务
-    async fn refund_ticket(&self, train_id: TrainId, seat_number: i32) -> Result<()> {
-        // 开启事务
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+        /// 退票业务
+        // 🟢 修复：添加 pub 关键字，允许 main.rs 跨模块调用
+        pub async fn refund_ticket(&self, train_id: TrainId, seat_number: i32) -> Result<()> {
+            // 开启事务
+            let mut tx = self
+                .pool
+                .begin()
+                .await
+                .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
 
-        //执行删除
-        let result = sqlx::query("delete from tickets where train_id = $1 and seat_number = $2")
-            .bind(train_id.0)
-            .bind(seat_number)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+            // 执行删除
+            let result = sqlx::query("delete from tickets where train_id = $1 and seat_number = $2")
+                .bind(train_id.0)
+                .bind(seat_number)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
 
-        // 业务防御, 如果删除影响的行数是 0, 说明这张票不存在
-        if result.rows_affected() == 0 {
-            return Err(SystemError::InvalidRoute {
-                reason: format!(
-                    "退票失败: 未找到车次 {} 座位 {} 的购票流水",
-                    train_id.0, seat_number
-                ),
-            });
+            // 业务防御, 如果删除影响的行数是 0, 说明这张票不存在
+            if result.rows_affected() == 0 {
+                return Err(SystemError::InvalidRoute {
+                    reason: format!(
+                        "退票失败: 未找到车次 {} 座位 {} 的购票流水",
+                        train_id.0, seat_number
+                    ),
+                });
+            }
+
+            tx.commit()
+                .await
+                .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+            Ok(())
         }
-
-        tx.commit()
-            .await
-            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
-        Ok(())
-    }
-
-    /// 调用存储过程 1：统计指定车次在指定时间的销售张数
-    pub async fn get_train_sales_stats(&self, train_id: TrainId, timestamp: i32) -> Result<i32> {
-        let row: (i32,) = sqlx::query_as("SELECT proc_count_train_sales($1, $2);")
-            .bind(train_id.0)
-            .bind(timestamp)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
-
-        Ok(row.0)
-    }
-
-    /// 调用存储过程 2：统计指定日期（时间戳起始点）各业务员的销售收入
-    pub async fn get_clerk_revenue_stats(
-        &self,
-        day_start_timestamp: i32,
-    ) -> Result<Vec<(i32, i32)>> {
-        // sqlx 的 query_as 可以直接把存储过程返回的 TABLE 映射为元组的集合
-        let rows: Vec<(i32, i32)> = sqlx::query_as("SELECT * FROM proc_clerk_daily_revenue($1);")
-            .bind(day_start_timestamp)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
-
-        Ok(rows)
-    }
-}
 
 #[cfg(test)]
 mod tests {

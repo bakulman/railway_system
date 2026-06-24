@@ -45,6 +45,12 @@ struct SellTicketRequest {
     price_cents: i32,
 }
 
+#[derive(Deserialize)]
+struct RefundTicketRequest {
+    train_id: i32,
+    seat_number: i32,
+}
+
 //2. Web 处理器(Handler)
 
 /// API: 注册业务员
@@ -121,6 +127,20 @@ async fn handle_sell_ticket(
     })))
 }
 
+async fn handle_refund_ticket(
+    State(storage): State<Arc<DbStorage>>,
+    Json(payload): Json<RefundTicketRequest>,
+) -> error::Result<impl IntoResponse> {
+    // 调用我们刚刚解锁了 pub 的底层退票函数
+    storage
+        .refund_ticket(TrainId(payload.train_id), payload.seat_number)
+        .await?;
+
+    Ok(Json(
+        json!({"success": true, "message": "退票成功并已原子加回剩余座位数"}),
+    ))
+}
+
 // 3. 异步主函数
 
 #[tokio::main]
@@ -147,9 +167,9 @@ async fn main() {
         .route("/api/v1/trains", post(handle_add_train))
         .route("/api/v1/prices", post(handle_set_price))
         .route("/api/v1/tickets/sell", post(handle_sell_ticket))
-        // 🟢 极其优雅：通过 with_state 一把将数据底座焊死在整个 Web 路由生命周期中
+        .route("/api/v1/tickets/refund", post(handle_refund_ticket)) //  补齐退票管理大闸！
         .with_state(shared_storage)
-        .layer(cors); //cors
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
         .await
