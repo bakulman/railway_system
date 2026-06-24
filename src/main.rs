@@ -135,14 +135,18 @@ async fn main() {
         .expect("数据库连接失败, 请检查 docker 状态");
 
     let shared_storage = Arc::new(storage);
-
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
     let app = Router::new()
         .route("/api/v1/clerks", post(handle_add_clerk))
         .route("/api/v1/trains", post(handle_add_train))
         .route("/api/v1/prices", post(handle_set_price))
         .route("/api/v1/tickets/sell", post(handle_sell_ticket))
         // 🟢 极其优雅：通过 with_state 一把将数据底座焊死在整个 Web 路由生命周期中
-        .with_state(shared_storage);
+        .with_state(shared_storage)
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
         .await
