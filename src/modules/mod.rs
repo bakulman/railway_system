@@ -1,4 +1,5 @@
 pub mod clerk;
+pub mod station;
 pub mod ticket;
 pub mod train;
 
