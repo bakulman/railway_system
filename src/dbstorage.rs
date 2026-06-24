@@ -127,7 +127,12 @@ impl DbStorage {
             .await
             .map_err(|e| SystemError::DatabaseError(format!("高并发获取锁失败: {}", e)))?;
 
-        let sold_at_timestamp = 1719000000;
+        // let sold_at_timestamp = 1719000000;
+        let sold_at_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as i64)
+            .unwrap_or(0);
+
         let query_future = sqlx::query("insert into tickets (train_id, clerk_id, from_station_id, to_station_id, seat_number, price_cents, sold_at) values($1, $2, $3, $4, $5, $6, $7);")
             .bind(train_id.0)
             .bind(clerk_id.0)
