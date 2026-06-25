@@ -1,4 +1,4 @@
 pub struct Station {
-    id: crate::modules::StationId,
-    name: String,
+    pub id: crate::modules::StationId,
+    pub name: String,
 }

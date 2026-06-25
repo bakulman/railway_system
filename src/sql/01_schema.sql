@@ -14,34 +14,41 @@ CREATE TABLE trains (
     remaining_seats INT NOT NULL
 );
 
--- 3. 创建车次站点与票价表（复合主键 + 级联删除外键）
+-- 1. 必须最先创建车站基础表
+CREATE TABLE stations (
+    station_id INT PRIMARY KEY,
+    station_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+-- 2. 修改车次价格表，追加外键
 CREATE TABLE train_prices (
     train_id INT,
-    from_station_id INT NOT NULL,
-    to_station_id INT NOT NULL,
+    from_station_id INT REFERENCES stations(station_id), -- 👈 强绑定
+    to_station_id INT REFERENCES stations(station_id),   -- 👈 强绑定
     price_cents INT NOT NULL,
-    from_seq INT NOT NULL,  --车次的站点序列
+    from_seq INT NOT NULL,
     to_seq INT NOT NULL,
     PRIMARY KEY (train_id, from_station_id, to_station_id),
     FOREIGN KEY (train_id) REFERENCES trains(train_id) ON DELETE CASCADE
 );
 
--- 4. 创建车票流水表（自增主键 + 严格外键约束）
+-- 3. 修改车票流水表，追加外键
 CREATE TABLE tickets (
-    ticket_id SERIAL PRIMARY KEY, -- 必须显式声明主键
-    train_id INT NOT NULL,
-    clerk_id INT NOT NULL,
-    from_station_id INT NOT NULL,
-    to_station_id INT NOT NULL,
+    ticket_id SERIAL PRIMARY KEY,
+    train_id INT NOT NULL REFERENCES trains(train_id),
+    clerk_id INT NOT NULL REFERENCES clerks(clerk_id),
+    from_station_id INT NOT NULL REFERENCES stations(station_id), -- 👈 强绑定
+    to_station_id INT NOT NULL REFERENCES stations(station_id),   -- 👈 强绑定
     seat_number INT NOT NULL,
     price_cents INT NOT NULL,
-    sold_at BIGINT NOT NULL,
-    FOREIGN KEY (train_id) REFERENCES trains(train_id),
-    FOREIGN KEY (clerk_id) REFERENCES clerks(clerk_id)
+    sold_at BIGINT NOT NULL
 );
 
--- TODO!!!!!
-create table station(
-    station_id int primary key,
-    station_name varchar(50) not null
-);
+
+-- 2. 为 tickets 表追加复合索引（专为 03 号区间防冲突触发器优化）
+-- 这样每次查这个座位的区间占用时，能达到极速的 Index Seek
+CREATE INDEX idx_tickets_train_seat ON tickets (train_id, seat_number);
+
+-- 3. 为 tickets 表的 sold_at 追加索引（专为 05、06 号存储过程优化）
+-- 如果业务会频繁按天查账，这个索引不可或缺
+CREATE INDEX idx_tickets_sold_at ON tickets (sold_at);

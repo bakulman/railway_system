@@ -1,4 +1,8 @@
-use sqlx::{PgPool, PgTransaction, Postgres, Transaction, postgres::PgPoolOptions, query};
+use sqlx::{
+    PgPool, PgTransaction, Postgres, Row, Transaction,
+    postgres::{PgPoolOptions, PgRow},
+    query,
+};
 // 提示：你需要根据实际情况在 error.rs 中定义你的 SystemError 枚举
 use crate::{
     error::{Result, SystemError},
@@ -46,6 +50,16 @@ impl DbStorage {
                 Err(SystemError::DatabaseError(sqlx_err.to_string()))
             }
         }
+    }
+    /// 注册一个基础车站
+    pub async fn add_station(&self, id: i32, name: &str) -> Result<()> {
+        sqlx::query("INSERT INTO stations (station_id, station_name) VALUES ($1, $2);")
+            .bind(id)
+            .bind(name)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| SystemError::DatabaseError(format!("车站注册失败: {}", e)))?;
+        Ok(())
     }
 
     /// 为指定车次配置区间票价与站点顺序
@@ -129,7 +143,7 @@ impl DbStorage {
         // 🟢 修复：将 i64 修改为 i32，与数据库 INT 和统计过程完美对齐
         let sold_at_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_secs() as i32)
+            .map(|duration| duration.as_secs() as i64)
             .unwrap_or(0);
 
         let query_future = sqlx::query("insert into tickets (train_id, clerk_id, from_station_id, to_station_id, seat_number, price_cents, sold_at) values($1, $2, $3, $4, $5, $6, $7);")
@@ -201,6 +215,37 @@ impl DbStorage {
             .await
             .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
         Ok(())
+    }
+    pub async fn count_train_sales(&self, train_id: TrainId, target_time: i64) -> Result<i32> {
+        let result = sqlx::query("SELECT proc_count_train_sales($1, $2)")
+            .bind(train_id.0)
+            .bind(target_time)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+
+        // 提取第一列的返回值
+        let count: i32 = result.get(0);
+        Ok(count)
+    }
+
+    /// 统计指定日期各业务员车票的销售收入
+    pub async fn get_daily_revenue(&self, day_start_timestamp: i64) -> Result<Vec<(i32, i32)>> {
+        let rows: Vec<PgRow> =
+            sqlx::query("SELECT out_clerk_id, out_total_revenue FROM proc_clerk_daily_revenue($1)")
+                .bind(day_start_timestamp)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| SystemError::DatabaseError(e.to_string()))?;
+
+        let mut stats = Vec::new();
+        for row in rows {
+            let clerk_id: i32 = row.get("out_clerk_id");
+            let revenue: i32 = row.get("out_total_revenue");
+            stats.push((clerk_id, revenue));
+        }
+
+        Ok(stats)
     }
 }
 

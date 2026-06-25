@@ -50,6 +50,21 @@ struct RefundTicketRequest {
     train_id: i32,
     seat_number: i32,
 }
+#[derive(Deserialize)]
+struct CountSalesRequest {
+    train_id: i32,
+    target_time: i64,
+}
+
+#[derive(Deserialize)]
+struct DailyRevenueRequest {
+    day_start: i64,
+}
+#[derive(Deserialize)]
+struct CreateStationRequest {
+    station_id: i32,
+    station_name: String,
+}
 
 //2. Web 处理器(Handler)
 
@@ -140,6 +155,52 @@ async fn handle_refund_ticket(
         json!({"success": true, "message": "退票成功并已原子加回剩余座位数"}),
     ))
 }
+async fn handle_count_sales(
+    State(storage): State<Arc<DbStorage>>,
+    Json(payload): Json<CountSalesRequest>,
+) -> error::Result<impl IntoResponse> {
+    let count = storage
+        .count_train_sales(TrainId(payload.train_id), payload.target_time)
+        .await?;
+    Ok(Json(json!({
+        "success": true,
+        "message": "统计成功",
+        "data": { "total_sold": count }
+    })))
+}
+
+async fn handle_daily_revenue(
+    State(storage): State<Arc<DbStorage>>,
+    Json(payload): Json<DailyRevenueRequest>,
+) -> error::Result<impl IntoResponse> {
+    let stats = storage.get_daily_revenue(payload.day_start).await?;
+
+    // 将 (clerk_id, revenue) 元组转换为 JSON 友好的格式
+    let json_stats: Vec<_> = stats
+        .into_iter()
+        .map(|(id, rev)| json!({"clerk_id": id, "total_revenue_cents": rev}))
+        .collect();
+
+    Ok(Json(json!({
+        "success": true,
+        "message": "财务统计成功",
+        "data": json_stats
+    })))
+}
+async fn handle_add_station(
+    State(storage): State<Arc<DbStorage>>,
+    Json(payload): Json<CreateStationRequest>,
+) -> error::Result<impl IntoResponse> {
+    // 调用我们在 DbStorage 中实现的 add_station 底层方法
+    storage
+        .add_station(payload.station_id, &payload.station_name)
+        .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"success": true, "message": "车站注册成功"})),
+    ))
+}
 
 // 3. 异步主函数
 
@@ -165,9 +226,12 @@ async fn main() {
     let app = Router::new()
         .route("/api/v1/clerks", post(handle_add_clerk))
         .route("/api/v1/trains", post(handle_add_train))
+        .route("/api/v1/stations", post(handle_add_station))
         .route("/api/v1/prices", post(handle_set_price))
         .route("/api/v1/tickets/sell", post(handle_sell_ticket))
-        .route("/api/v1/tickets/refund", post(handle_refund_ticket)) //  补齐退票管理大闸！
+        .route("/api/v1/tickets/refund", post(handle_refund_ticket))
+        .route("/api/v1/stats/sales", post(handle_count_sales))
+        .route("/api/v1/stats/revenue", post(handle_daily_revenue))
         .with_state(shared_storage)
         .layer(cors);
 

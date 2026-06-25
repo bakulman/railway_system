@@ -3,420 +3,122 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>⚡ 12306高并发售票演兵场 - 完全体</title>
-        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+        <title>Railway-Admiral 压测沙盘</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            /* 简单的终端日志滚动条样式 */
+            #log-container::-webkit-scrollbar {
+                width: 6px;
+            }
+            #log-container::-webkit-scrollbar-thumb {
+                background: #4b5563;
+                border-radius: 4px;
+            }
+        </style>
     </head>
-    <body class="bg-gray-900 text-gray-100 font-sans min-h-screen p-6">
-        <div class="max-w-7xl mx-auto">
-            <header
-                class="border-b border-gray-800 pb-4 mb-6 flex justify-between items-center"
-            >
-                <div>
-                    <h1
-                        class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-cyan-400 to-emerald-400"
-                    >
-                        RAILWAY ADMIRAL
-                        <span
-                            class="text-xs font-mono px-2 py-1 bg-gray-800 text-cyan-400 rounded border border-gray-700 ml-2"
-                            >数据库程序设计结题演示</span
-                        >
-                    </h1>
-                    <p class="text-sm text-gray-400 mt-1">
-                        后端驱动：Rust Axum + Tokio 异步网关 |
-                        数据内核：PostgreSQL 悲观锁 & 触发器
-                    </p>
-                </div>
-                <div class="flex gap-2">
-                    <button
-                        onclick="prepopulateDemoData()"
-                        class="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold px-4 py-2 rounded-lg text-xs cursor-pointer shadow-lg transition"
-                    >
-                        💡 一键预导入多组测试数据
-                    </button>
-                </div>
+    <body class="bg-gray-900 text-gray-100 min-h-screen p-8 font-sans">
+        <div class="max-w-4xl mx-auto">
+            <header class="mb-10 text-center">
+                <h1
+                    class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400"
+                >
+                    ⚡ Railway-Admiral 控制台
+                </h1>
+                <p class="mt-2 text-gray-400">
+                    高并发分布式火车票务管理系统 - 极限防超卖演示
+                </p>
             </header>
 
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div class="lg:col-span-5 space-y-6">
-                    <div
-                        class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md"
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div
+                    class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg"
+                >
+                    <h2 class="text-xl font-bold mb-4 text-blue-300">
+                        ⚙️ 第一步：环境筑基
+                    </h2>
+                    <p class="text-sm text-gray-400 mb-6">
+                        向 PostgreSQL
+                        写入基础测试字典（车站、业务员、车次、区间票价）。
+                    </p>
+                    <button
+                        id="btn-init"
+                        onclick="initSystem()"
+                        class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition-colors"
                     >
-                        <h3
-                            class="text-sm font-bold text-blue-400 mb-3 flex items-center"
-                        >
-                            🛠️ 1. 录入新车次
-                        </h3>
-                        <div class="grid grid-cols-3 gap-2 text-xs">
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >车次 ID</label
-                                >
-                                <input
-                                    id="in-train-id"
-                                    type="number"
-                                    value="101"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >车次名称</label
-                                >
-                                <input
-                                    id="in-train-name"
-                                    type="text"
-                                    value="复兴号G101"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >总座位数</label
-                                >
-                                <input
-                                    id="in-train-seats"
-                                    type="number"
-                                    value="50"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                        </div>
-                        <button
-                            onclick="submitTrain()"
-                            class="mt-3 w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-1.5 rounded transition cursor-pointer"
-                        >
-                            录入车次并同步
-                        </button>
-                    </div>
-
-                    <div
-                        class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md"
-                    >
-                        <h3
-                            class="text-sm font-bold text-cyan-400 mb-3 flex items-center"
-                        >
-                            🗺️ 2. 配置区间票价与站点顺序
-                        </h3>
-                        <div class="grid grid-cols-3 gap-2 text-xs mb-2">
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >所属车次 ID</label
-                                >
-                                <input
-                                    id="in-price-train-id"
-                                    type="number"
-                                    value="101"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >出发站 ID</label
-                                >
-                                <input
-                                    id="in-from-station"
-                                    type="number"
-                                    value="1"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >到达站 ID</label
-                                >
-                                <input
-                                    id="in-to-station"
-                                    type="number"
-                                    value="4"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-3 gap-2 text-xs">
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >票价(分)</label
-                                >
-                                <input
-                                    id="in-price-cents"
-                                    type="number"
-                                    value="9900"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >出发站序号</label
-                                >
-                                <input
-                                    id="in-from-seq"
-                                    type="number"
-                                    value="1"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >到达站序号</label
-                                >
-                                <input
-                                    id="in-to-seq"
-                                    type="number"
-                                    value="4"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                        </div>
-                        <button
-                            onclick="submitPrice()"
-                            class="mt-3 w-full bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold py-1.5 rounded transition cursor-pointer"
-                        >
-                            挂载区间票价
-                        </button>
-                    </div>
-
-                    <div
-                        class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md"
-                    >
-                        <h3
-                            class="text-sm font-bold text-indigo-400 mb-3 flex items-center"
-                        >
-                            🧑‍💼 3. 注册票务业务员
-                        </h3>
-                        <div class="grid grid-cols-2 gap-2 text-xs">
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >业务员 ID</label
-                                >
-                                <input
-                                    id="in-clerk-id"
-                                    type="number"
-                                    value="7"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-gray-400 mb-1"
-                                    >业务员姓名</label
-                                >
-                                <input
-                                    id="in-clerk-name"
-                                    type="text"
-                                    value="一号窗口刘明"
-                                    class="w-full bg-gray-950 border border-gray-700 rounded p-1.5 text-white"
-                                />
-                            </div>
-                        </div>
-                        <button
-                            onclick="submitClerk()"
-                            class="mt-3 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-1.5 rounded transition cursor-pointer"
-                        >
-                            注册业务员并同步
-                        </button>
-                    </div>
+                        01. 初始化系统基础数据
+                    </button>
                 </div>
 
-                <div class="lg:col-span-7 space-y-6">
-                    <div
-                        class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg relative overflow-hidden"
+                <div
+                    class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg"
+                >
+                    <h2 class="text-xl font-bold mb-4 text-red-400">
+                        🔥 第二步：压力测试
+                    </h2>
+                    <p class="text-sm text-gray-400 mb-6">
+                        模拟 100 个并发网络请求，同时抢夺 [1号车次] 的
+                        [7号座位]。
+                    </p>
+                    <button
+                        id="btn-attack"
+                        onclick="launchAttack()"
+                        disabled
+                        class="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded transition-colors flex items-center justify-center"
                     >
-                        <div
-                            class="absolute top-0 right-0 bg-emerald-500/10 text-emerald-400 text-[10px] font-mono px-3 py-1 rounded-bl border-l border-b border-emerald-500/20"
+                        <span id="attack-text"
+                            >02. 100个请求并发全速冲锋！</span
                         >
-                            CONSUMER PANEL
-                        </div>
-                        <h2
-                            class="text-lg font-black text-emerald-400 mb-4 flex items-center"
-                        >
-                            🛒 旅客动态选座与高并发抢票沙盘
-                        </h2>
+                    </button>
+                </div>
+            </div>
 
-                        <div
-                            class="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs mb-6 bg-gray-950 p-4 rounded-lg border border-gray-800"
-                        >
-                            <div>
-                                <label
-                                    class="block text-gray-400 mb-1 font-bold"
-                                    >选择出行车次</label
-                                >
-                                <select
-                                    id="con-train-select"
-                                    class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white font-medium focus:border-emerald-500 focus:outline-none"
-                                >
-                                    <option value="">
-                                        -- 请先录入或导入车次 --
-                                    </option>
-                                </select>
-                            </div>
-                            <div>
-                                <label
-                                    class="block text-gray-400 mb-1 font-bold"
-                                    >经由业务员</label
-                                >
-                                <select
-                                    id="con-clerk-select"
-                                    class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white font-medium focus:border-emerald-500 focus:outline-none"
-                                >
-                                    <option value="">
-                                        -- 请先录入或导入业务员 --
-                                    </option>
-                                </select>
-                            </div>
-                            <div>
-                                <label
-                                    class="block text-gray-400 mb-1 font-bold"
-                                    >锁定座位号</label
-                                >
-                                <input
-                                    id="con-seat-number"
-                                    type="number"
-                                    value="18"
-                                    class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label
-                                    class="block text-gray-400 mb-1 font-bold"
-                                    >出发车站 ID</label
-                                >
-                                <input
-                                    id="con-from-id"
-                                    type="number"
-                                    value="1"
-                                    class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-emerald-500 focus:outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label
-                                    class="block text-gray-400 mb-1 font-bold"
-                                    >到达车站 ID</label
-                                >
-                                <input
-                                    id="con-to-id"
-                                    type="number"
-                                    value="4"
-                                    class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-emerald-500 focus:outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label
-                                    class="block text-gray-400 mb-1 font-bold"
-                                    >结算票价(分)</label
-                                >
-                                <input
-                                    id="con-price-cents"
-                                    type="number"
-                                    value="9900"
-                                    class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-emerald-500 focus:outline-none"
-                                />
-                            </div>
-                        </div>
-
-                        <div class="flex flex-wrap gap-3">
-                            <button
-                                onclick="buySingleTicket()"
-                                class="flex-1 min-w-[140px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-lg text-xs cursor-pointer shadow transition text-center"
-                            >
-                                🧑 单人精确购票
-                            </button>
-                            <button
-                                onclick="refundSingleTicket()"
-                                class="flex-1 min-w-[140px] bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-2.5 rounded-lg text-xs cursor-pointer shadow transition text-center"
-                            >
-                                🔄 旅客申请退票
-                            </button>
-                            <button
-                                onclick="blitzConcurrency()"
-                                class="flex-[2] min-w-[240px] bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white font-black px-5 py-2.5 rounded-lg text-xs cursor-pointer transition shadow-lg text-center animate-pulse"
-                            >
-                                🔥 100路并发流量瞬间围剿该座位！
-                            </button>
-                        </div>
-
-                        <div
-                            class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-950 p-4 rounded-lg border border-gray-800 font-mono text-center mt-6"
-                        >
-                            <div>
-                                <div
-                                    class="text-[10px] text-gray-500 uppercase"
-                                >
-                                    总网络突击
-                                </div>
-                                <div
-                                    id="stat-total"
-                                    class="text-xl font-bold text-gray-300"
-                                >
-                                    0
-                                </div>
-                            </div>
-                            <div>
-                                <div
-                                    class="text-[10px] text-emerald-500 uppercase"
-                                >
-                                    出票落盘 (201)
-                                </div>
-                                <div
-                                    id="stat-success"
-                                    class="text-xl font-bold text-emerald-400"
-                                >
-                                    0
-                                </div>
-                            </div>
-                            <div>
-                                <div
-                                    class="text-[10px] text-rose-500 uppercase"
-                                >
-                                    锁冲突拦截 (409)
-                                </div>
-                                <div
-                                    id="stat-conflict"
-                                    class="text-xl font-bold text-rose-400"
-                                >
-                                    0
-                                </div>
-                            </div>
-                            <div>
-                                <div
-                                    class="text-[10px] text-amber-500 uppercase"
-                                >
-                                    网关其他响应
-                                </div>
-                                <div
-                                    id="stat-error"
-                                    class="text-xl font-bold text-amber-400"
-                                >
-                                    0
-                                </div>
-                            </div>
-                        </div>
+            <div class="grid grid-cols-3 gap-4 mb-8 text-center">
+                <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <div class="text-gray-400 text-sm mb-1">总请求数</div>
+                    <div class="text-3xl font-mono text-white" id="stat-total">
+                        0
                     </div>
-
+                </div>
+                <div
+                    class="bg-gray-800 p-4 rounded-lg border border-green-900 shadow-[0_0_15px_rgba(34,197,94,0.2)]"
+                >
+                    <div class="text-green-400 text-sm mb-1">购票成功</div>
                     <div
-                        class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-md"
+                        class="text-3xl font-mono text-green-400"
+                        id="stat-success"
                     >
-                        <div class="flex justify-between items-center mb-3">
-                            <h3
-                                class="text-sm font-bold text-amber-400 flex items-center"
-                            >
-                                📟 网关与关系型数据库内核通信流水线
-                            </h3>
-                            <button
-                                onclick="clearConsole()"
-                                class="text-[11px] text-gray-500 hover:text-gray-300 underline cursor-pointer"
-                            >
-                                清空控制台
-                            </button>
-                        </div>
-                        <div
-                            id="console-log"
-                            class="bg-gray-950 rounded-lg p-3 h-52 overflow-y-auto font-mono text-[11px] space-y-1.5 border border-gray-800 leading-relaxed"
-                        >
-                            <div class="text-gray-600">
-                                [沙盘就绪]
-                                等待总指挥官下达指令，可点击右上角一键注入多组数据...
-                            </div>
-                        </div>
+                        0
                     </div>
+                </div>
+                <div
+                    class="bg-gray-800 p-4 rounded-lg border border-red-900 shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+                >
+                    <div class="text-red-400 text-sm mb-1">被锁/触发器拦截</div>
+                    <div
+                        class="text-3xl font-mono text-red-500"
+                        id="stat-failed"
+                    >
+                        0
+                    </div>
+                </div>
+            </div>
+
+            <div
+                class="bg-black rounded-xl p-4 border border-gray-700 font-mono text-sm shadow-2xl"
+            >
+                <div
+                    class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2"
+                >
+                    <span class="text-gray-500">System Log output...</span>
+                    <button
+                        onclick="clearLog()"
+                        class="text-xs text-gray-500 hover:text-white transition-colors"
+                    >
+                        Clear
+                    </button>
+                </div>
+                <div id="log-container" class="h-64 overflow-y-auto space-y-1">
+                    <div class="text-gray-500">等待指令...</div>
                 </div>
             </div>
         </div>
@@ -424,392 +126,173 @@
         <script>
             const API_BASE = "http://127.0.0.1:8080/api/v1";
 
-            // 本地记忆体：保存成功录入的车次和业务员，从而让消费端动态下拉
-            let registeredTrains = [];
-            let registeredClerks = [];
-
-            function log(msg, type = "info") {
-                const container = document.getElementById("console-log");
-                const time = new Date().toLocaleTimeString();
-                let color = "text-gray-400";
-                if (type === "success") color = "text-emerald-400 font-bold";
-                if (type === "conflict") color = "text-rose-400 font-medium";
-                if (type === "error") color = "text-amber-400";
-                if (type === "admin") color = "text-blue-400";
-
-                container.innerHTML += `<div class="${color}">[${time}] ${msg}</div>`;
-                container.scrollTop = container.scrollHeight;
-            }
-
-            function clearConsole() {
-                document.getElementById("console-log").innerHTML =
-                    "<div class='text-gray-600'>[控制台已清空]</div>";
-            }
-
-            // 动态刷新消费端的 Select 下拉菜单
-            function updateConsumerDropdowns() {
-                const trainSelect = document.getElementById("con-train-select");
-                const clerkSelect = document.getElementById("con-clerk-select");
-
-                // 刷新车次
-                if (registeredTrains.length === 0) {
-                    trainSelect.innerHTML = `<option value="">-- 请先录入或导入车次 --</option>`;
-                } else {
-                    trainSelect.innerHTML = registeredTrains
-                        .map(
-                            (t) =>
-                                `<option value="${t.id}">${t.name} (ID: ${t.id}, ${t.seats}座)</option>`,
-                        )
-                        .join("");
-                }
-
-                // 刷新业务员
-                if (registeredClerks.length === 0) {
-                    clerkSelect.innerHTML = `<option value="">-- 请先录入或导入业务员 --</option>`;
-                } else {
-                    clerkSelect.innerHTML = registeredClerks
-                        .map(
-                            (c) =>
-                                `<option value="${c.id}">${c.name} (ID: ${c.id})</option>`,
-                        )
-                        .join("");
-                }
-            }
-
-            // ================= 管理端：API通信发送逻辑 =================
-
-            async function submitTrain() {
-                const id = parseInt(
-                    document.getElementById("in-train-id").value,
-                );
-                const name = document.getElementById("in-train-name").value;
-                const seats = parseInt(
-                    document.getElementById("in-train-seats").value,
-                );
-
+            // 统一的 Fetch 封装
+            async function apiCall(endpoint, payload) {
                 try {
-                    let res = await fetch(`${API_BASE}/trains`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            train_id: id,
-                            name: name,
-                            total_seats: seats,
-                        }),
-                    });
-                    let data = await res.json();
-
-                    if (res.ok || res.status === 201) {
-                        log(
-                            `📥 [管理端] 车次录入成功! ID: ${id}, 名称: ${name}`,
-                            "admin",
-                        );
-                        // 避免重复推入本地记忆体
-                        if (!registeredTrains.some((t) => t.id === id)) {
-                            registeredTrains.push({ id, name, seats });
-                            updateConsumerDropdowns();
-                        }
-                    } else {
-                        log(
-                            `❌ [管理端] 车次录入被拒绝: ${data.message || res.statusText}`,
-                            "error",
-                        );
-                    }
-                } catch (err) {
-                    log(`🚨 网络故障: ${err.message}`, "error");
-                }
-            }
-
-            async function submitPrice() {
-                const trainId = parseInt(
-                    document.getElementById("in-price-train-id").value,
-                );
-                const fromStation = parseInt(
-                    document.getElementById("in-from-station").value,
-                );
-                const toStation = parseInt(
-                    document.getElementById("in-to-station").value,
-                );
-                const priceCents = parseInt(
-                    document.getElementById("in-price-cents").value,
-                );
-                const fromSeq = parseInt(
-                    document.getElementById("in-from-seq").value,
-                );
-                const toSeq = parseInt(
-                    document.getElementById("in-to-seq").value,
-                );
-
-                try {
-                    let res = await fetch(`${API_BASE}/prices`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            train_id: trainId,
-                            from_station: fromStation,
-                            to_station: toStation,
-                            price_cents: priceCents,
-                            from_seq: fromSeq,
-                            to_seq: toSeq,
-                        }),
-                    });
-                    let data = await res.json();
-                    if (res.ok) {
-                        log(
-                            `📥 [管理端] 区间票价挂载成功! 车次: ${trainId}, 范围: 序号${fromSeq}➔${toSeq}`,
-                            "admin",
-                        );
-                    } else {
-                        log(
-                            `❌ [管理端] 票价挂载失败: ${data.message}`,
-                            "error",
-                        );
-                    }
-                } catch (err) {
-                    log(`🚨 网络故障: ${err.message}`, "error");
-                }
-            }
-
-            async function submitClerk() {
-                const id = parseInt(
-                    document.getElementById("in-clerk-id").value,
-                );
-                const name = document.getElementById("in-clerk-name").value;
-
-                try {
-                    let res = await fetch(`${API_BASE}/clerks`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ clerk_id: id, name: name }),
-                    });
-                    let data = await res.json();
-                    if (res.ok || res.status === 201) {
-                        log(
-                            `📥 [管理端] 业务员注册成功! ID: ${id}, 姓名: ${name}`,
-                            "admin",
-                        );
-                        if (!registeredClerks.some((c) => c.id === id)) {
-                            registeredClerks.push({ id, name });
-                            updateConsumerDropdowns();
-                        }
-                    } else {
-                        log(
-                            `❌ [管理端] 业务员注册失败: ${data.message}`,
-                            "error",
-                        );
-                    }
-                } catch (err) {
-                    log(`🚨 网络故障: ${err.message}`, "error");
-                }
-            }
-
-            // 一键自动导入多组演示数据，免得演示时手动点得满头大汗
-            async function prepopulateDemoData() {
-                clearConsole();
-                log("🚀 开始执行工业级大批量测试数据前置筑基...");
-
-                // 数据组 1
-                document.getElementById("in-train-id").value = 777;
-                document.getElementById("in-train-name").value = "复兴号G777";
-                document.getElementById("in-train-seats").value = 100;
-                await submitTrain();
-
-                document.getElementById("in-price-train-id").value = 777;
-                document.getElementById("in-from-station").value = 10;
-                document.getElementById("in-to-station").value = 14;
-                document.getElementById("in-price-cents").value = 5800;
-                document.getElementById("in-from-seq").value = 1;
-                document.getElementById("in-to-seq").value = 4;
-                await submitPrice();
-
-                // 数据组 2
-                document.getElementById("in-train-id").value = 888;
-                document.getElementById("in-train-name").value = "和谐号D888";
-                document.getElementById("in-train-seats").value = 200;
-                await submitTrain();
-
-                document.getElementById("in-price-train-id").value = 888;
-                document.getElementById("in-from-station").value = 20;
-                document.getElementById("in-to-station").value = 25;
-                document.getElementById("in-price-cents").value = 3500;
-                document.getElementById("in-from-seq").value = 1;
-                document.getElementById("in-to-seq").value = 5;
-                await submitPrice();
-
-                // 业务员
-                document.getElementById("in-clerk-id").value = 9;
-                document.getElementById("in-clerk-name").value =
-                    "自动化AI售票机";
-                await submitClerk();
-
-                log(
-                    "🟢 【筑基大成功】两组车次与高精区间、业务员已全部注入完毕，下拉菜单已全部刷新！可以开始在右侧选择体验了。",
-                    "success",
-                );
-            }
-
-            // ================= 消费端：购票与退票核心网络流 =================
-
-            // 统一提取消费端的参数对象
-            function getConsumerPayload() {
-                return {
-                    clerk_id: parseInt(
-                        document.getElementById("con-clerk-select").value,
-                    ),
-                    train_id: parseInt(
-                        document.getElementById("con-train-select").value,
-                    ),
-                    from_station_id: parseInt(
-                        document.getElementById("con-from-id").value,
-                    ),
-                    to_station_id: parseInt(
-                        document.getElementById("con-to-id").value,
-                    ),
-                    seat_number: parseInt(
-                        document.getElementById("con-seat-number").value,
-                    ),
-                    price_cents: parseInt(
-                        document.getElementById("con-price-cents").value,
-                    ),
-                };
-            }
-
-            async function buySingleTicket() {
-                const payload = getConsumerPayload();
-                if (isNaN(payload.train_id) || isNaN(payload.clerk_id)) {
-                    alert("请先确保车次和业务员已选择！");
-                    return;
-                }
-
-                try {
-                    let res = await fetch(`${API_BASE}/tickets/sell`, {
+                    const response = await fetch(`${API_BASE}${endpoint}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(payload),
                     });
-                    let data = await res.json();
-
-                    if (res.status === 200 || res.status === 201) {
-                        log(
-                            `🎉 [HTTP ${res.status}] 出票成功! 旅客已锁定车次 ${payload.train_id} 的 ${payload.seat_number} 号座。`,
-                            "success",
-                        );
-                    } else if (res.status === 409) {
-                        log(
-                            `🛡️ [HTTP 409] 触发器高并发占座拦截: ${data.message}`,
-                            "conflict",
-                        );
-                    } else {
-                        log(
-                            `⚠️ [HTTP ${res.status}] 网关提示: ${data.message}`,
-                            "error",
-                        );
-                    }
+                    const data = await response.json();
+                    return { status: response.status, data };
                 } catch (err) {
-                    log(`🚨 管道异常: ${err.message}`, "error");
+                    return {
+                        status: 500,
+                        data: {
+                            message:
+                                "网络连接失败，请确认 Rust 后端已启动在 8080 端口",
+                        },
+                    };
                 }
             }
 
-            async function refundSingleTicket() {
-                const payload = getConsumerPayload();
-                if (isNaN(payload.train_id)) {
-                    alert("请选择退票的目标车次！");
-                    return;
-                }
+            // 日志打印函数
+            function log(message, type = "info") {
+                const container = document.getElementById("log-container");
+                const time = new Date()
+                    .toISOString()
+                    .split("T")[1]
+                    .slice(0, -1);
+                const color =
+                    type === "error"
+                        ? "text-red-400"
+                        : type === "success"
+                          ? "text-green-400"
+                          : "text-blue-300";
+                const icon =
+                    type === "error" ? "✖" : type === "success" ? "✔" : "➜";
 
-                try {
-                    let res = await fetch(`${API_BASE}/tickets/refund`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            train_id: payload.train_id,
-                            seat_number: payload.seat_number,
-                        }),
-                    });
-                    let data = await res.json();
+                const div = document.createElement("div");
+                div.className = `${color}`;
+                div.innerHTML = `<span class="text-gray-500">[${time}]</span> ${icon} ${message}`;
 
-                    if (res.ok) {
-                        log(
-                            `🔄 [HTTP 200] 退票大功告成! 车次 ${payload.train_id} 的 ${payload.seat_number} 号座已移出流水账，触发器同步加回剩余座位数。`,
-                            "success",
-                        );
-                    } else {
-                        log(
-                            `❌ [HTTP ${res.status}] 退票失败: ${data.message}`,
-                            "error",
-                        );
-                    }
-                } catch (err) {
-                    log(`🚨 管道异常: ${err.message}`, "error");
-                }
+                container.appendChild(div);
+                container.scrollTop = container.scrollHeight;
             }
 
-            // ================= 💥 终极核心功能：100路并发决战 =================
+            function clearLog() {
+                document.getElementById("log-container").innerHTML = "";
+            }
 
-            async function blitzConcurrency() {
-                const payload = getConsumerPayload();
-                if (isNaN(payload.train_id) || isNaN(payload.clerk_id)) {
-                    alert("请先选择车次和业务员！");
-                    return;
-                }
+            // ================= 业务逻辑 =================
 
+            async function initSystem() {
+                clearLog();
+                log("开始初始化基础环境...", "info");
+                document.getElementById("btn-init").disabled = true;
+
+                // 1. 注册车站
+                await apiCall("/stations", {
+                    station_id: 1,
+                    station_name: "青岛",
+                });
+                await apiCall("/stations", {
+                    station_id: 2,
+                    station_name: "北京",
+                });
+                log("车站 [1: 青岛], [2: 北京] 注册完毕", "success");
+
+                // 2. 注册业务员
+                await apiCall("/clerks", { clerk_id: 1, name: "Admin01" });
+                log("业务员 [Admin01] 注册完毕", "success");
+
+                // 3. 注册车次 (总共只有 3 个座位)
+                await apiCall("/trains", {
+                    train_id: 1,
+                    name: "G888",
+                    total_seats: 3,
+                });
+                log("车次 [G888] 注册完毕，总座位: 3", "success");
+
+                // 4. 配置价格与区间顺序
+                await apiCall("/prices", {
+                    train_id: 1,
+                    from_station: 1,
+                    to_station: 2,
+                    price_cents: 5000,
+                    from_seq: 1,
+                    to_seq: 2,
+                });
+                log("区间票价与物理排序配置完毕！系统已就绪。", "success");
+
+                // 解锁攻击按钮
+                document.getElementById("btn-attack").disabled = false;
+                document.getElementById("btn-init").innerText =
+                    "环境已初始化完成";
+            }
+
+            async function launchAttack() {
+                const attackBtn = document.getElementById("btn-attack");
+                attackBtn.disabled = true;
+                attackBtn.classList.add("animate-pulse");
+                document.getElementById("attack-text").innerText =
+                    "并发冲锋中...";
+
+                log("====================================");
                 log(
-                    `🔥 【全面冲锋】100个虚拟旅客已集结，准备在同一毫秒疯狂围剿车次 ${payload.train_id} 的 ${payload.seat_number} 号座位...`,
+                    "🚀 发起 100 个并发购票请求，抢夺 G888 次列车 7 号座位！",
+                    "info",
                 );
 
-                let total = 0,
-                    success = 0,
-                    conflict = 0,
-                    error = 0;
-                const updateStats = () => {
-                    document.getElementById("stat-total").innerText = total;
-                    document.getElementById("stat-success").innerText = success;
-                    document.getElementById("stat-conflict").innerText =
-                        conflict;
-                    document.getElementById("stat-error").innerText = error;
+                let successCount = 0;
+                let failedCount = 0;
+                const totalRequests = 100;
+
+                // 重置面板
+                document.getElementById("stat-total").innerText = totalRequests;
+                document.getElementById("stat-success").innerText = "0";
+                document.getElementById("stat-failed").innerText = "0";
+
+                const payload = {
+                    clerk_id: 1,
+                    train_id: 1,
+                    from_station_id: 1,
+                    to_station_id: 2,
+                    seat_number: 7,
+                    price_cents: 5000,
                 };
 
-                let tasks = [];
-                for (let i = 0; i < 100; i++) {
-                    tasks.push(
-                        fetch(`${API_BASE}/tickets/sell`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(payload),
-                        })
-                            .then(async (res) => {
-                                total++;
-                                let data = await res.json();
-                                if (res.status === 200 || res.status === 201) {
-                                    success++;
-                                    log(
-                                        `[HTTP ${res.status}] 🎟️ 第 ${i + 1} 号小人抢票成功! 夺得该位置!`,
-                                        "success",
-                                    );
-                                } else if (res.status === 409) {
-                                    conflict++;
-                                    log(
-                                        `[HTTP 409] 🛡️ 第 ${i + 1} 号小人抢票失败 -> 内核拦截成功`,
-                                        "conflict",
-                                    );
-                                } else {
-                                    error++;
-                                }
-                                updateStats();
-                            })
-                            .catch((err) => {
-                                total++;
-                                error++;
-                                updateStats();
-                            }),
-                    );
-                }
+                // 构造 100 个完全并行的 Promise
+                const promises = Array.from({ length: totalRequests }).map(
+                    async (_, index) => {
+                        const reqId = index + 1;
+                        const result = await apiCall("/tickets/sell", payload);
 
-                await Promise.all(tasks);
-                log(
-                    `📊 战役打完! 结算 -> 1人突破锁阵出票成功，${conflict}人被线段重叠触发器精准弹回。防超卖完美闭环！`,
-                    "success",
+                        if (result.status === 200) {
+                            successCount++;
+                            log(
+                                `[Req-${reqId}] 突破防线！购票成功！`,
+                                "success",
+                            );
+                            document.getElementById("stat-success").innerText =
+                                successCount;
+                        } else {
+                            failedCount++;
+                            // 大部分应该都是 409 Conflict (P0003 区间冲突拦截)
+                            log(
+                                `[Req-${reqId}] 被拦截: ${result.data.message}`,
+                                "error",
+                            );
+                            document.getElementById("stat-failed").innerText =
+                                failedCount;
+                        }
+                    },
                 );
+
+                // 等待所有请求冲锋结束
+                await Promise.all(promises);
+
+                log("====================================");
+                log(
+                    `并发压测结束。成功: ${successCount}, 被拦截: ${failedCount}`,
+                    "info",
+                );
+
+                attackBtn.classList.remove("animate-pulse");
+                document.getElementById("attack-text").innerText =
+                    "再次发起冲锋";
+                attackBtn.disabled = false;
             }
         </script>
     </body>

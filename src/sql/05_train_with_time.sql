@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION proc_count_train_sales(v_train_id INT, v_target_time INT)
+CREATE OR REPLACE FUNCTION proc_count_train_sales(v_train_id BIGINT, v_target_time BIGINT)
 RETURNS INT AS $$
 DECLARE
     v_total_sold INT;
