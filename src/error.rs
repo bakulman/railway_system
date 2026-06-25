@@ -50,7 +50,7 @@ impl IntoResponse for SystemError {
                 format!("未找到 ID 为 {} 的车次", train_id.0),
             ),
             SystemError::ClerkNotFound { clerk_id } => (
-                StatusCode::NOT_FOUND, // 🟢 语义化：404 找不到员工
+                StatusCode::NOT_FOUND, //  语义化：404 找不到员工
                 "CLERK_NOT_FOUND",
                 format!("未找到 ID 为 {} 的业务员", clerk_id.0),
             ),
@@ -60,7 +60,7 @@ impl IntoResponse for SystemError {
                 format!("车次 {} 总余票不足，出票失败", train_id.0),
             ),
             SystemError::SeatConflict { seat_id } => (
-                StatusCode::CONFLICT, // 🟢 语义化：409 区间占座冲突归位，变量精准解包
+                StatusCode::CONFLICT, //  语义化：409 区间占座冲突归位，变量精准解包
                 "SEAT_CONFLICT",
                 format!("座位 {} 在该区间段已被锁定, 请选择其他座位", seat_id),
             ),

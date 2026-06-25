@@ -140,7 +140,7 @@ impl DbStorage {
             .await
             .map_err(|e| SystemError::DatabaseError(format!("高并发获取锁失败: {}", e)))?;
 
-        // 🟢 修复：将 i64 修改为 i32，与数据库 INT 和统计过程完美对齐
+        //  修复：将 i64 修改为 i32，与数据库 INT 和统计过程完美对齐
         let sold_at_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|duration| duration.as_secs() as i64)
