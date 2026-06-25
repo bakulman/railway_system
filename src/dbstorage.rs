@@ -260,7 +260,7 @@ mod tests {
             let fcnt = Arc::clone(&fail_cnt);
 
             let handle = tokio::spawn(async move {
-                // 4. 🟢 绝杀修复 2：把原本的 `i` 改成固定的 `7`！让 100 个人同时去抢 7 号座位！
+                // 4.  绝杀修复 2：把原本的 `i` 改成固定的 `7`！让 100 个人同时去抢 7 号座位！
                 match storage
                     .sell_ticket(ClerkId(1), TrainId(1), StationId(1), StationId(2), 7, 5000)
                     .await
